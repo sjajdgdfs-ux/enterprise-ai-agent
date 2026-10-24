@@ -10,7 +10,8 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from security import SecurityShield
-from graph_agent import builder, MOCK_PAYMENTS_DB, extract_clean_text, build_knowledge_base if hasattr(sys.modules.get('graph_agent'), 'build_knowledge_base') else None
+from graph_agent import builder, MOCK_PAYMENTS_DB, extract_clean_text
+from build_kb import build_knowledge_base
 
 st.set_page_config(page_title="Enterprise AI Support Agent", layout="wide")
 st.title("🛡️ Enterprise AI Support & Operations Portal")
@@ -22,7 +23,6 @@ if "shield" not in st.session_state:
 if "compiled_graph" not in st.session_state:
     # Ensure ChromaDB Knowledge Base exists
     if not os.path.exists("./chroma_db"):
-        from build_kb import build_knowledge_base
         build_knowledge_base()
     
     memory = MemorySaver()
