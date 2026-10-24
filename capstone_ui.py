@@ -1,28 +1,32 @@
 import os
 import sys
-import time
-import subprocess
+import asyncio
 import streamlit as st
-import requests
 
-# 🚀 Auto-start FastAPI Backend in Background (For Hugging Face Streamlit SDK)
-if "BACKEND_STARTED" not in os.environ:
-    os.environ["BACKEND_STARTED"] = "true"
-    try:
-        # 1. Build Vector Knowledge Base
-        subprocess.Popen([sys.executable, "build_kb.py"])
-        time.sleep(2)
-        # 2. Launch FastAPI Server in background on port 8000
-        subprocess.Popen([sys.executable, "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"])
-        time.sleep(3)
-    except Exception as e:
-        print(f"Backend Start Error: {e}")
+# Suppress gRPC and Google GenAI Verbose Logs
+os.environ["GRPC_VERBOSITY"] = "ERROR"
 
-# Dynamic API URL Resolution
-API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import MemorySaver
+
+from security import SecurityShield
+from graph_agent import builder, MOCK_PAYMENTS_DB, extract_clean_text, build_knowledge_base if hasattr(sys.modules.get('graph_agent'), 'build_knowledge_base') else None
 
 st.set_page_config(page_title="Enterprise AI Support Agent", layout="wide")
 st.title("🛡️ Enterprise AI Support & Operations Portal")
+
+# Initialize Security and LangGraph Memory in Streamlit Session State
+if "shield" not in st.session_state:
+    st.session_state.shield = SecurityShield()
+
+if "compiled_graph" not in st.session_state:
+    # Ensure ChromaDB Knowledge Base exists
+    if not os.path.exists("./chroma_db"):
+        from build_kb import build_knowledge_base
+        build_knowledge_base()
+    
+    memory = MemorySaver()
+    st.session_state.compiled_graph = builder.compile(checkpointer=memory)
 
 # Sidebar Role Selection & Configuration
 st.sidebar.header("User Control Panel")
@@ -30,7 +34,7 @@ user_role = st.sidebar.selectbox("Select Your Role", ["support_agent", "manager"
 user_id = st.sidebar.text_input("User Thread ID", value="user_1022")
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"Connected to Backend: `{API_URL}`")
+st.sidebar.success("Status: Connected to Internal Async Graph Engine")
 
 # Chat UI State Management
 if "messages" not in st.session_state:
@@ -53,14 +57,27 @@ if user_input:
         st.markdown(user_input)
 
     with st.spinner("Processing request through Multi-Agent System..."):
-        try:
-            payload = {"user_id": user_id, "query": user_input}
-            res = requests.post(f"{API_URL}/support", json=payload)
+        # 1. Security Check: Prompt Injection
+        if st.session_state.shield.check_prompt_injection(user_input):
+            err_msg = "Security Violation: Malicious injection pattern detected."
+            st.error(err_msg)
+            st.session_state.messages.append({"role": "assistant", "content": err_msg})
+        else:
+            # 2. PII Redaction
+            clean_query = st.session_state.shield.redact_pii(user_input)
+            config = {"configurable": {"thread_id": user_id}}
+            initial_state = {
+                "messages": [HumanMessage(content=clean_query)],
+                "intent": "",
+                "requires_approval": False,
+                "final_response": ""
+            }
 
-            if res.status_code == 200:
-                data = res.json()
-                response_text = data.get("response", "")
-                requires_approval = data.get("requires_approval", False)
+            try:
+                # Run LangGraph Engine directly
+                result = asyncio.run(st.session_state.compiled_graph.ainvoke(initial_state, config=config))
+                response_text = extract_clean_text(result.get("final_response", ""))
+                requires_approval = result.get("requires_approval", False)
 
                 with st.chat_message("assistant"):
                     st.markdown(response_text)
@@ -69,11 +86,8 @@ if user_input:
 
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 st.session_state.pending_approval = requires_approval
-            else:
-                err_msg = f"Error {res.status_code}: {res.json().get('detail', 'Unknown error')}"
-                st.error(err_msg)
-        except Exception as e:
-            st.error(f"Failed to connect to backend: {str(e)}")
+            except Exception as e:
+                st.error(f"Execution Error: {str(e)}")
 
 # Human-in-the-Loop (HITL) Manager Approval UI
 if st.session_state.pending_approval:
@@ -83,26 +97,18 @@ if st.session_state.pending_approval:
 
     with col1:
         if st.button("✅ Approve Refund"):
-            try:
-                payload = {"user_id": user_id, "action": "approve", "requestor_role": user_role}
-                res = requests.post(f"{API_URL}/approve", json=payload)
-                if res.status_code == 200:
-                    st.success(res.json().get("message", "Approved successfully."))
-                    st.session_state.pending_approval = False
-                else:
-                    st.error(res.json().get("detail", "Approval failed."))
-            except Exception as e:
-                st.error(f"Error executing approval: {str(e)}")
+            if user_role != "manager":
+                st.error("Access Denied: Only users with 'manager' role can approve actions.")
+            else:
+                if user_id in MOCK_PAYMENTS_DB:
+                    MOCK_PAYMENTS_DB[user_id]["status"] = "REFUNDED"
+                st.success(f"APPROVED BY MANAGER: Refund for user '{user_id}' executed successfully.")
+                st.session_state.pending_approval = False
 
     with col2:
         if st.button("❌ Reject Refund"):
-            try:
-                payload = {"user_id": user_id, "action": "reject", "requestor_role": user_role}
-                res = requests.post(f"{API_URL}/approve", json=payload)
-                if res.status_code == 200:
-                    st.info(res.json().get("message", "Rejected successfully."))
-                    st.session_state.pending_approval = False
-                else:
-                    st.error(res.json().get("detail", "Rejection failed."))
-            except Exception as e:
-                st.error(f"Error executing rejection: {str(e)}")
+            if user_role != "manager":
+                st.error("Access Denied: Only users with 'manager' role can approve actions.")
+            else:
+                st.info(f"REJECTED BY MANAGER: Refund for user '{user_id}' declined.")
+                st.session_state.pending_approval = False
