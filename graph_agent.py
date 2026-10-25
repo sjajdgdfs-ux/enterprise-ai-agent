@@ -39,7 +39,15 @@ class SystemState(TypedDict):
     final_response: str
 
 api_key = os.getenv("GEMINI_API_KEY", "")
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", google_api_key=api_key if api_key else "INVALID_KEY", temperature=0.1)
+
+# Restrict Output Tokens to 1024 for Cost Control and Prevent ReDoS / Exhaustion
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    google_api_key=api_key if api_key else "INVALID_KEY",
+    temperature=0.1,
+    max_output_tokens=1024
+)
+
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 2})

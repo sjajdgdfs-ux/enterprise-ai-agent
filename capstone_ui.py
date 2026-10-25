@@ -1,11 +1,6 @@
 import os
-import sys
 import asyncio
 import streamlit as st
-
-# Suppress gRPC and Google GenAI Verbose Logs
-os.environ["GRPC_VERBOSITY"] = "ERROR"
-
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -16,39 +11,37 @@ from build_kb import build_knowledge_base
 st.set_page_config(page_title="Enterprise AI Support Agent", layout="wide")
 st.title("🛡️ Enterprise AI Support & Operations Portal")
 
-# Initialize Security and LangGraph Memory in Streamlit Session State
+# Initialize Security and LangGraph Engine in Session State
 if "shield" not in st.session_state:
     st.session_state.shield = SecurityShield()
 
 if "compiled_graph" not in st.session_state:
-    # Ensure ChromaDB Knowledge Base exists
     if not os.path.exists("./chroma_db"):
         build_knowledge_base()
     
     memory = MemorySaver()
     st.session_state.compiled_graph = builder.compile(checkpointer=memory)
 
-# Sidebar Role Selection & Configuration
+# Sidebar Controls
 st.sidebar.header("User Control Panel")
 user_role = st.sidebar.selectbox("Select Your Role", ["support_agent", "manager"])
 user_id = st.sidebar.text_input("User Thread ID", value="user_1022")
 
 st.sidebar.markdown("---")
-st.sidebar.success("Status: Connected to Internal Async Graph Engine")
+st.sidebar.success("Security Mode: Hardened Production Engine Active")
 
-# Chat UI State Management
+# Chat UI State
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "pending_approval" not in st.session_state:
     st.session_state.pending_approval = False
 
-# Display Chat History
+# Display Chat Messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat Input Handler
 user_input = st.chat_input("Type your support request...")
 
 if user_input:
@@ -57,13 +50,13 @@ if user_input:
         st.markdown(user_input)
 
     with st.spinner("Processing request through Multi-Agent System..."):
-        # 1. Security Check: Prompt Injection
+        # 1. Security Input Filter (Prompt Injection Defense)
         if st.session_state.shield.check_prompt_injection(user_input):
-            err_msg = "Security Violation: Malicious injection pattern detected."
+            err_msg = "Security Violation: Malicious prompt injection attempt detected and blocked."
             st.error(err_msg)
             st.session_state.messages.append({"role": "assistant", "content": err_msg})
         else:
-            # 2. PII Redaction
+            # 2. PII Masking
             clean_query = st.session_state.shield.redact_pii(user_input)
             config = {"configurable": {"thread_id": user_id}}
             initial_state = {
@@ -74,7 +67,6 @@ if user_input:
             }
 
             try:
-                # Run LangGraph Engine directly
                 result = asyncio.run(st.session_state.compiled_graph.ainvoke(initial_state, config=config))
                 response_text = extract_clean_text(result.get("final_response", ""))
                 requires_approval = result.get("requires_approval", False)
@@ -89,7 +81,7 @@ if user_input:
             except Exception as e:
                 st.error(f"Execution Error: {str(e)}")
 
-# Human-in-the-Loop (HITL) Manager Approval UI
+# Human-In-The-Loop Approval Actions
 if st.session_state.pending_approval:
     st.divider()
     st.subheader("📋 Manager Approval Action Required")
