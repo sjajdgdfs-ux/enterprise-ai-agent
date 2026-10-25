@@ -42,7 +42,7 @@ api_key = os.getenv("GEMINI_API_KEY", "")
 
 # Restrict Output Tokens to 1024 for Cost Control and Prevent ReDoS / Exhaustion
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
+    model="gemini-3.5-flash-lite",
     google_api_key=api_key if api_key else "INVALID_KEY",
     temperature=0.1,
     max_output_tokens=1024
