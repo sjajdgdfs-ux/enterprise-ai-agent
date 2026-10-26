@@ -120,7 +120,26 @@ if user_input:
                 st.session_state.pending_approval = requires_approval
             except Exception as e:
                 st.error(f"Execution Error: {str(e)}")
+import json
 
+# ==========================================
+# Hidden Admin Dashboard (Observability)
+# ==========================================
+if user_role == "manager":
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📡 Admin Observability Logs")
+    if st.sidebar.button("Show System Traces"):
+        try:
+            with open("capstone_traces.jsonl", "r", encoding="utf-8") as f:
+                logs = f.readlines()
+                if logs:
+                    st.sidebar.success(f"Loaded {len(logs)} trace records.")
+                    for line in reversed(logs[-5:]): # Show last 5 interactions
+                        st.sidebar.json(json.loads(line))
+                else:
+                    st.sidebar.info("No traces yet.")
+        except FileNotFoundError:
+            st.sidebar.warning("Trace file not generated yet.")
 # ==========================================
 # Human-In-The-Loop Approval Actions
 # ==========================================
