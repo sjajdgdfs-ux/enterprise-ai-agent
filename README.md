@@ -79,7 +79,7 @@ Throughput: 10.2 Requests / Second (RPS)
 Average Response Latency: 943 ms
 🛠️ Tech Stack
 Language: Python 3.11+
-LLM Engine: Google Gemini 2.0 Flash (langchain-google-genai)
+LLM Engine: Google Gemini (langchain-google-genai)
 Agent Orchestration: LangGraph (StateGraph, MemorySaver, AsyncSqliteSaver)
 Vector Database: ChromaDB (langchain-chroma)
 Embeddings: HuggingFace sentence-transformers/all-MiniLM-L6-v2
